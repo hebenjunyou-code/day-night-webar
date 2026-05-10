@@ -1,1 +1,488 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebAR起動QR — Day-to-Night（インストール不要）</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: system-ui, "Segoe UI", sans-serif;
+      background: #0f1419; color: #e8eaed; padding: 20px; line-height: 1.6;
+    }
+    h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 12px; }
+    p { margin: 0 0 14px; font-size: 0.9rem; color: #bdc1c6; }
+    label { display: block; font-size: 0.8rem; color: #9aa0a6; margin-bottom: 6px; }
+    input[type="url"], input[type="text"].field {
+      width: 100%; max-width: 520px; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid #3c4043; background: #1a1d21; color: #e8eaed; font-size: 0.95rem;
+    }
+    .lan-block {
+      margin: 18px 0; padding: 14px 16px; border-radius: 10px;
+      border: 1px solid rgba(106,183,255,0.35); background: rgba(26,115,232,0.08); max-width: 640px;
+    }
+    .lan-block h3 { margin: 0 0 10px; font-size: 0.95rem; color: #8ab4f8; }
+    .lan-block p { margin: 0 0 10px; font-size: 0.82rem; color: #bdc1c6; }
+    .hero {
+      padding: 14px 16px; margin-bottom: 18px; border-radius: 10px; max-width: 640px;
+      border: 1px solid rgba(129,201,149,0.45); background: rgba(129,201,149,0.08);
+      color: #bdc1c6; font-size: 0.88rem; line-height: 1.65;
+    }
+    .hero strong { color: #e8eaed; }
+    .deploy-block {
+      margin: 18px 0; padding: 14px 16px; border-radius: 10px; max-width: 640px;
+      border: 1px solid rgba(129,201,149,0.35); background: rgba(60,120,90,0.12);
+    }
+    .deploy-block h3 { margin: 0 0 10px; font-size: 0.95rem; color: #81c995; }
+    .deploy-block ol { margin: 6px 0 0 1.1rem; color: #bdc1c6; font-size: 0.82rem; }
+    .deploy-block a { color: #8ab4f8; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 20px; align-items: center; }
+    button {
+      padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer;
+      background: #1a73e8; color: #fff; font-size: 0.9rem; font-weight: 500;
+    }
+    button.secondary { background: #3c4043; color: #e8eaed; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #qr-wrap {
+      margin-top: 8px; padding: 16px; background: #fff; border-radius: 12px;
+      display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+    }
+    #qr-wrap canvas, #qr-wrap img { display: block; width: 280px; height: 280px; }
+    #qr-wrap img { object-fit: contain; }
 
+    .err { color: #f28b82; font-size: 0.85rem; margin-top: 8px; }
+    .tip { color: #fdd663; font-size: 0.85rem; margin-top: 8px; max-width: 620px; line-height: 1.55; }
+    #file-callout {
+      display: none; margin-bottom: 18px; padding: 14px 16px; border-radius: 10px;
+      border: 1px solid rgba(253,214,99,0.45); background: rgba(253,214,99,0.08);
+      color: #fde7b2; font-size: 0.88rem; max-width: 640px; line-height: 1.65;
+    }
+    #file-callout h2 { margin: 0 0 8px; font-size: 1rem; color: #fff; }
+    #file-callout ol { margin: 8px 0 0 1.1rem; padding: 0; color: #bdc1c6; }
+    #file-callout li { margin-bottom: 6px; }
+    pre.cmd {
+      margin: 10px 0 0; padding: 12px 14px; border-radius: 8px;
+      background: #1a1d21; color: #bdc1c6; font-size: 0.78rem;
+      overflow-x: auto; border: 1px solid #3c4043; white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .hint { font-size: 0.8rem; color: #80868b; margin-top: 20px; max-width: 560px; }
+    code { background: #1a1d21; padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <h1>WebAR 起動用 QR（スマホがメイン）</h1>
+  <div class="hero">
+    <strong>このQRの役割</strong>：
+    スマホがカメラ付きブラウザ（Safari / Chrome など）だけで<strong>インストール不要</strong>の WebAR が開きます。アプリのストア配布は不要です。<br /><br />
+    <strong>PCの画面</strong>は「ARの視聴用モニター」ではなく、このページのように<strong>起動リンクの発行やファイルの公開</strong>・検証が主になります。
+  </div>
+  <div id="file-callout">
+    <h2>いまブラウザで <code>file://</code> のまま開いています</h2>
+    QRにしたい<strong>HTTPS（または開発用の適切なhttp）のURL</strong>がネットワーク上に無い状態です。このままQRにしても<strong>スマホではほぼ開けません</strong>。<strong>恒久運用には下の GitHub Pages などがおすすめ</strong>です。
+    <ol>
+      <li><strong>手元開発：</strong> ローカルサーバーをPCで動かす → 同一Wi‑Fiなら<strong>PCのIPv4</strong>のURL／外出先には <strong>ngrok</strong> 等のHTTPSで <code>…/day-night-ar.html</code> を入力欄へ。</li>
+      <li><strong>PCのみ動作確認：</strong> 「PC用 localhost」でURL入力 → <strong>PCのブラウザのアドレス欄</strong>に貼って開く（QRは使わない）。</li>
+    </ol>
+    <button type="button" id="btnCopyServe">サーバー起動コマンドをコピー（PowerShell）</button>
+    <pre class="cmd" id="serve-cmd-preview"></pre>
+  </div>
+
+  <p>
+    「QRコードを読み込む」と <strong>スマホのブラウザで <code>day-night-ar.html</code> が開き、画面の案内どおりカメラ許可でARが動きます</strong>。<br />
+    下の入力欄には、その<strong>Web上の<code>…/day-night-ar.html</code>のフルURL</strong> を入れ、「QRを表示」で<strong>アプリ起動用QR</strong>を出します。<br />
+    <strong>127.0.0.1 / localhost</strong> をQRにするとスマホは<strong>自分自身</strong>に接続して失敗するため、このページではブロックしています。
+  </p>
+
+  <div class="deploy-block">
+    <h3>いつでも開けるURLを残したい（GitHub など）</h3>
+    <p style="margin:0 0 8px;color:#bdc1c6;font-size:.82rem;line-height:1.55;">
+      アプリ本体は単体HTMLでも、ブラウザは<strong>ウェブ経由で取りにいくため</strong>、どこかのサーバー／ホスティング上に置くことになります。無料でも手軽な例は<strong>GitHub Pages</strong>です。
+    </p>
+    <ol>
+      <li>GitHub でリポジトリを作成し、<code>day-night-ar.html</code> をアップ（ユーザー名.github.io にするか、プロジェクトサイトなら<code>/REPO/</code>下）。</li>
+      <li>リポジトリ <strong>Settings → Pages</strong> でソースブランチを指定しサイトを公開する。</li>
+      <li>表示された <strong><code>https://…/day-night-ar.html</code></strong> を、このページの入力欄へ貼り「QRを表示」。</li>
+    </ol>
+    <p style="margin:10px 0 0;color:#80868b;font-size:.78rem;"><a href="https://pages.github.com/" target="_blank" rel="noopener">GitHub Pages の公式説明（英語）</a> · Cloudflare Pages / Netlify なども同等のHTTPSホストとして使えます。</p>
+  </div>
+
+  <div class="lan-block">
+    <h3>開発中：同一Wi‑FiのスマホからPCのサーバーへ繋ぐ</h3>
+    <p>
+      PC で <code>ipconfig</code> の <strong>IPv4</strong>（例 <code>192.168.1.15</code>）を確認。<strong>サーバーが <code>0.0.0.0</code> で待ち受けている</strong>状態で（下のコピーコマンド参照）、そのIPからURLを組み立ててQRを出します。
+    </p>
+    <label for="lanIp">PCのIPv4アドレス</label>
+    <input type="text" id="lanIp" class="field" placeholder="例: 192.168.10.42" autocomplete="off" />
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="btnLanUrl">入力欄に「http://そのIP:3333/…」を入れる</button>
+    </div>
+    <p class="hint" style="margin-top:10px;color:#80868b">
+      社内・大学のネットではブロックされることがあります。カメラが使えないブラウザは <strong>HTTPS</strong>（ngrok 等）のURLを貼ってください。
+    </p>
+  </div>
+
+  <label for="targetUrl">ARページのURL（例: https://xxxx.ngrok-free.app/day-night-ar.html）</label>
+  <input type="url" id="targetUrl" placeholder="https://example.com/day-night-ar.html" autocomplete="url" />
+
+  <div class="row">
+    <button type="button" id="btnGen">起動QRを表示</button>
+    <button type="button" id="btnLocalhost" class="secondary">PCのみ検証… localhost を入れる</button>
+    <button type="button" id="btnThis" class="secondary">今のページから ARのURLだけ入れる（http時）</button>
+  </div>
+
+  <div id="tip" class="tip" hidden></div>
+  <div id="err" class="err" hidden></div>
+  <div id="qr-wrap" hidden>
+    <canvas id="qr"></canvas>
+    <img id="qr-img" alt="QRコード" hidden />
+  </div>
+
+  <p class="hint">
+    QRの中身は常に<strong>スマホ向けアプリURL</strong>です。恒久運用は <strong>GitHub Pages 等の <code>https://</code></strong> を推奨（カメラの制限も少なくなりやすい）。<br />
+    クエリ <code>?url=</code> 付きでこのページを開くと、そのURLですぐ起動QRを出せます。
+  </p>
+
+  <script>
+    (function () {
+      var input = document.getElementById('targetUrl');
+      var btnGen = document.getElementById('btnGen');
+      var btnThis = document.getElementById('btnThis');
+      var err = document.getElementById('err');
+      var wrap = document.getElementById('qr-wrap');
+      var canvas = document.getElementById('qr');
+      var qrImg = document.getElementById('qr-img');
+      var tip = document.getElementById('tip');
+      var qrLoadAttempted = false;
+
+      var QR_SCRIPT_URLS = [
+        'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+        'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js'
+      ];
+
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.async = true;
+          s.onload = resolve;
+          s.onerror = function () {
+            reject(new Error('load fail'));
+          };
+          document.head.appendChild(s);
+        });
+      }
+
+      function ensureQrCode() {
+        if (typeof QRCode !== 'undefined') {
+          return Promise.resolve(true);
+        }
+        if (qrLoadAttempted) {
+          return Promise.resolve(typeof QRCode !== 'undefined');
+        }
+        qrLoadAttempted = true;
+
+        function tryIndex(i) {
+          if (i >= QR_SCRIPT_URLS.length) {
+            return Promise.resolve(false);
+          }
+          return loadScript(QR_SCRIPT_URLS[i])
+            .then(function () {
+              if (typeof QRCode !== 'undefined') return true;
+              return tryIndex(i + 1);
+            })
+            .catch(function () {
+              return tryIndex(i + 1);
+            });
+        }
+        return tryIndex(0);
+      }
+
+      function showQrViaImageApi(text, apiIndex) {
+        apiIndex = apiIndex || 0;
+        var urls = [
+          function (t) {
+            return (
+              'https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=2&qzone=1&data=' +
+              encodeURIComponent(t)
+            );
+          },
+          function (t) {
+            return (
+              'https://quickchart.io/qr?size=280&margin=2&text=' + encodeURIComponent(t)
+            );
+          }
+        ];
+        if (apiIndex >= urls.length) {
+          showError('QRを表示できません。ネットワークかブロック設定を確認するか、URLを手動でスマホに送ってください。');
+          wrap.hidden = true;
+          return;
+        }
+        if (!qrImg) {
+          showError('表示エリアが見つかりません。');
+          return;
+        }
+        showError('');
+        wrap.hidden = false;
+        canvas.hidden = true;
+        qrImg.hidden = false;
+        qrImg.onload = function () {
+          showTip('※ライブラリが使えないため、外部サービスでQR画像を生成しています。');
+        };
+        qrImg.onerror = function () {
+          showQrViaImageApi(text, apiIndex + 1);
+        };
+        qrImg.src = urls[apiIndex](text);
+      }
+
+      function showQrCanvas(text) {
+        if (!qrImg) return;
+        canvas.hidden = false;
+        qrImg.hidden = true;
+        QRCode.toCanvas(
+          canvas,
+          text,
+          { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } },
+          function (error) {
+            if (error) {
+              showQrViaImageApi(text, 0);
+            } else {
+              showTip('');
+            }
+          }
+        );
+      }
+
+      function isLoopbackHost(hostname) {
+        var h = (hostname || '').toLowerCase();
+        return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
+      }
+
+      function renderQr(text) {
+        if (!text) return;
+        try {
+          var pu = new URL(text);
+          if (isLoopbackHost(pu.hostname)) {
+            showError(
+              'このURLは 127.0.0.1 / localhost です。スマホは「スマホ自身」に接続しようとして失敗します。上の「PCのIPv4」で組み立てるか、ngrok の https URL を使ってください。'
+            );
+            wrap.hidden = true;
+            return;
+          }
+        } catch (e) {
+          return;
+        }
+        showError('');
+        wrap.hidden = false;
+        ensureQrCode().then(function (ok) {
+          if (ok && typeof QRCode !== 'undefined') {
+            showQrCanvas(text);
+          } else {
+            showQrViaImageApi(text, 0);
+          }
+        });
+      }
+
+      var fileCallout = document.getElementById('file-callout');
+      var SERVE_PORT = '3333';
+
+      function serveCommandLines() {
+        var dirHint = '';
+        try {
+          if (window.location.protocol === 'file:') {
+            var u = new URL(window.location.href);
+            var rawPath = decodeURIComponent((u.pathname || '').replace(/\\/g, '/'));
+            if (rawPath.charAt(0) === '/' && rawPath.charAt(2) === ':' && /^[a-zA-Z]$/.test(rawPath.charAt(1))) {
+              rawPath = rawPath.slice(1);
+            }
+            var slash = rawPath.lastIndexOf('/');
+            var dirPosix = slash > 0 ? rawPath.slice(0, slash) : '';
+            var chop = dirPosix.replace(/\//g, '\\');
+            if (chop && /^[a-zA-Z]:\\/.test(chop)) {
+              dirHint = 'cd "' + chop.replace(/"/g, '""') + '"\r\n';
+            }
+          }
+        } catch (e) {}
+        return (
+          dirHint +
+          'npx --yes serve -l tcp://0.0.0.0:' +
+          SERVE_PORT +
+          ' .\r\n' +
+          ':: PC: http://127.0.0.1:' +
+          SERVE_PORT +
+          '/day-night-ar.html\r\n' +
+          ':: スマホ(同一Wi‑Fi): 上で入れたIPv4 と同じポート /day-night-ar.html\r\n' +
+          ':: スマホ向けHTTPS(例): ngrok http ' +
+          SERVE_PORT +
+          '\r\n' +
+          ':: bindで失敗する場合: Python例 → py -m http.server ' +
+          SERVE_PORT +
+          ' --bind 0.0.0.0'
+        );
+      }
+
+      if (document.getElementById('serve-cmd-preview')) {
+        document.getElementById('serve-cmd-preview').textContent = serveCommandLines().replace(/\r\n/g, '\n');
+      }
+
+      if (window.location.protocol === 'file:' && fileCallout) {
+        fileCallout.style.display = 'block';
+      }
+
+      function showTip(msg) {
+        if (!tip) return;
+        tip.textContent = msg || '';
+        tip.hidden = !msg;
+      }
+
+      function showError(msg) {
+        err.textContent = msg;
+        err.hidden = !msg;
+      }
+
+      function parseQuery() {
+        var q = window.location.search.slice(1);
+        if (!q) return null;
+        var params = new URLSearchParams(q);
+        return params.get('url') || params.get('target');
+      }
+
+      function arUrlFromThisPage() {
+        try {
+          return new URL('day-night-ar.html', window.location.href).href;
+        } catch (e) {
+          return '';
+        }
+      }
+
+      btnGen.addEventListener('click', function () {
+        showTip('');
+        var u = (input.value || '').trim();
+        if (!u) {
+          showError('URLを入力してください。');
+          wrap.hidden = true;
+          return;
+        }
+        try {
+          var parsed = new URL(u);
+          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            showError('http または https のURLを指定してください。');
+            wrap.hidden = true;
+            return;
+          }
+          if (isLoopbackHost(parsed.hostname)) {
+            showError(
+              '127.0.0.1 / localhost のQRはスマホでは開けません（接続先がスマホ自身になります）。「PCのIPv4」欄で 192.168… のURLを作るか、HTTPSのトンネルURLを貼ってください。'
+            );
+            wrap.hidden = true;
+            return;
+          }
+          if (parsed.protocol === 'http:') {
+            showTip('http のURLです。同一Wi‑Fi内のPC向けなら可。スマホでカメラがブロックされる場合は https（ngrok等）に切り替えてください。');
+          } else {
+            showTip('');
+          }
+        } catch (e) {
+          showError('URLの形式が正しくありません。');
+          wrap.hidden = true;
+          return;
+        }
+        renderQr(u);
+      });
+
+      var btnCopyServe = document.getElementById('btnCopyServe');
+      if (btnCopyServe) {
+        btnCopyServe.addEventListener('click', function () {
+          var t = serveCommandLines().replace(/\r\n/g, '\n');
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(function () {
+              showTip('コピーしました。PowerShell に貼り付けて Enter。');
+              showError('');
+            }).catch(function () {
+              showError('クリップボードにコピーできませんでした。');
+            });
+          } else {
+            showError('このブラウザでは clipboard API が使えません。');
+          }
+        });
+      }
+
+      var btnLocalhost = document.getElementById('btnLocalhost');
+      if (btnLocalhost) {
+        btnLocalhost.addEventListener('click', function () {
+          input.value = 'http://127.0.0.1:' + SERVE_PORT + '/day-night-ar.html';
+          showError('');
+          showTip(
+            '【PC専用】このURLで「QRを表示」してもブロックされます。PCのブラウザのアドレス欄へ直接ペーストして開いてください。スマホ用は「PCのIPv4」または ngrok の https を使ってください。'
+          );
+          wrap.hidden = true;
+        });
+      }
+
+      var btnLanUrl = document.getElementById('btnLanUrl');
+      var lanIp = document.getElementById('lanIp');
+      if (btnLanUrl && lanIp) {
+        btnLanUrl.addEventListener('click', function () {
+          var raw = (lanIp.value || '').trim();
+          var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(raw);
+          if (!m) {
+            showError('IPv4 は 192.168.x.x のように「数字.数字.数字.数字」で入れてください。');
+            return;
+          }
+          for (var k = 1; k <= 4; k++) {
+            var n = parseInt(m[k], 10);
+            if (n > 255) {
+              showError('無効なIPアドレスです。');
+              return;
+            }
+          }
+          input.value =
+            'http://' +
+            raw +
+            ':' +
+            SERVE_PORT +
+            '/day-night-ar.html';
+          showError('');
+          showTip(
+            '同じWi‑Fiのスマホで試すURLを入れました。「QRを表示」で読み取れます。ページが開かないときはWindowsファイアウォールが3333を許可しているか確認してください。'
+          );
+          wrap.hidden = true;
+        });
+      }
+
+      btnThis.addEventListener('click', function () {
+        showTip('');
+        var u = arUrlFromThisPage();
+        if (!u) {
+          showError('URLを組み立てられませんでした。');
+          return;
+        }
+        input.value = u;
+        if (window.location.protocol === 'file:') {
+          showError('');
+          showTip(
+            '入力欄に file:// が入りました。このままQRにしてもスマホでは開けません。まずサーバー起動コマンドを実行し、ngrokなどで得た https のURLに差し替えてから「QRを表示」してください。'
+          );
+          wrap.hidden = true;
+          return;
+        }
+        renderQr(u);
+      });
+
+      var preset = parseQuery();
+      if (preset) {
+        input.value = preset;
+        try {
+          if (isLoopbackHost(new URL(preset).hostname)) {
+            showTip('?url= に localhost が含まれています。スマホ用に 192.168… または https のURLに差し替えてから「QRを表示」してください。');
+          } else {
+            renderQr(preset);
+          }
+        } catch (e) {
+          showError('クエリのURLが不正です。');
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

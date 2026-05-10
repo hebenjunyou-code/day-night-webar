@@ -1,1 +1,624 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>神戸ポートタワー — Day-to-Night AR</title>
+  <!-- raw.githack はブロックされやすいので jsDelivr の GitHub ミラーを使用 -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.2/aframe/build/aframe-ar.js"
+    onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js'"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; overflow: hidden; background: #000 !important; font-family: "Segoe UI", system-ui, sans-serif; }
+
+    #start-btn {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 2000; border: none; cursor: pointer; font-weight: bold; font-size: 18px;
+      padding: 18px 40px; border-radius: 28px; color: #fff;
+      background: linear-gradient(135deg, #ff6b6b, #ff5252);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45); transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #start-btn:active { transform: translate(-50%, -50%) scale(0.96); }
+
+    #loading-spinner {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 2001; display: none; text-align: center; color: #fff;
+    }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.25); border-top-color: #fff;
+      border-radius: 50%; width: 42px; height: 42px; margin: 0 auto;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-spinner p { margin-top: 14px; font-size: 14px; opacity: 0.9; }
+
+    #status-info {
+      position: fixed; top: 16px; right: 16px; z-index: 1500; display: none;
+      background: rgba(0,0,0,0.82); color: #6ab7ff; padding: 10px 12px; border-radius: 8px;
+      font-size: 11px; font-family: Consolas, "Courier New", monospace;
+      border: 1px solid rgba(106,183,255,0.35); pointer-events: none;
+    }
+
+    #control-panel {
+      position: fixed; bottom: 16px; left: 16px; z-index: 1500; display: none;
+      background: rgba(0,0,0,0.88); color: #fff; padding: 14px; border-radius: 12px;
+      max-width: 240px; font-size: 12px; border: 1px solid rgba(255,255,255,0.12);
+      pointer-events: auto;
+    }
+    .control-title { font-weight: bold; color: #6ab7ff; margin-bottom: 10px; font-size: 13px; }
+    .control-group { margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .control-group label { min-width: 72px; font-size: 11px; opacity: 0.9; }
+    .control-group input[type="range"] { width: 72px; height: 4px; accent-color: #4a90e2; cursor: pointer; }
+    .value-display { min-width: 34px; text-align: right; font-size: 11px; color: #6ab7ff; font-weight: bold; }
+    .button-group { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .button-group button {
+      flex: 1; min-width: 0; background: #4a90e2; color: #fff; border: none;
+      padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: bold;
+    }
+    .button-group button.secondary { background: #3c4043; }
+    .button-group button:active { filter: brightness(1.08); }
+
+    #error-msg {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 3000; display: none; max-width: 86%; text-align: center;
+      background: rgba(200, 40, 40, 0.96); color: #fff; padding: 22px; border-radius: 12px; font-size: 15px;
+    }
+    #error-msg button {
+      margin-top: 12px; padding: 10px 20px; border: none; border-radius: 8px;
+      background: #fff; color: #c00; cursor: pointer; font-weight: bold; font-size: 14px;
+    }
+
+    #hud-mini {
+      position: fixed; left: 12px; bottom: 12px; z-index: 1400; display: none;
+      color: rgba(255,255,255,0.88); font-size: 10px; line-height: 1.4; max-width: min(88vw, 300px);
+      pointer-events: none; text-shadow: 0 1px 3px #000;
+    }
+    #hud-mini code { font-size: 9px; }
+    #__boot-overlay {
+      position: fixed; inset: 0; z-index: 50000; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; padding: 24px; background: #0a0a0a; color: #e0e0e0;
+      font-size: 14px; text-align: center; line-height: 1.5;
+    }
+    #__boot-overlay.err { background: #2a1515; color: #ffcdd2; }
+    #__boot-overlay.hide { display: none; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+  <div id="__boot-overlay">
+    <span>ライブラリを読み込み中です…</span>
+    <span style="font-size:12px;opacity:.75">GitHub Pages では数秒かかることがあります</span>
+  </div>
+
+  <button type="button" id="start-btn">🎬 WebAR を開始（アプリのインストール不要）</button>
+
+  <div id="loading-spinner">
+    <div class="spinner"></div>
+    <p>初期化中…</p>
+  </div>
+
+  <div id="status-info">
+    <div>FPS: <span id="fps-counter">0</span></div>
+    <div>AI分割: <span id="seg-status">Off</span></div>
+    <div>エフェクト: <span id="effect-status">Off</span></div>
+  </div>
+
+  <div id="control-panel">
+    <div class="control-title">🌙 Day-for-Night（シングルパス）</div>
+    <div class="control-group">
+      <label>強さ</label>
+      <input type="range" min="0" max="100" value="75" id="intensity-slider" />
+      <span class="value-display" id="intensity-display">75%</span>
+    </div>
+    <div class="control-group">
+      <label>Bloom</label>
+      <input type="range" min="0" max="100" value="60" id="bloom-slider" />
+      <span class="value-display" id="bloom-display">60%</span>
+    </div>
+    <div class="control-group">
+      <label>グレイン</label>
+      <input type="range" min="0" max="100" value="40" id="grain-slider" />
+      <span class="value-display" id="grain-display">40%</span>
+    </div>
+    <div class="control-group">
+      <label>空の置換</label>
+      <input type="range" min="0" max="100" value="80" id="sky-slider" />
+      <span class="value-display" id="sky-display">80%</span>
+    </div>
+    <div class="button-group">
+      <button type="button" id="btn-ai">🤖 AI: ON</button>
+      <button type="button" id="btn-reset">リセット</button>
+      <button type="button" id="btn-effect" class="secondary">エフェクト</button>
+    </div>
+  </div>
+
+  <div id="hud-mini">
+    <strong>Webブラウザのみ・ストアアプリなし</strong><br />
+    <code>Hiro</code> マーカーを映す · 起動はQR（<code>day-night-ar-qr.html</code>）から<br />
+    <span id="status-line">—</span>
+  </div>
+
+  <div id="error-msg">
+    <p id="error-text">エラー</p>
+    <button type="button" onclick="location.reload()">再試行</button>
+  </div>
+
+  <a-scene
+    id="ar-scene"
+    embedded
+    style="display:none;"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; labelingMode: white_region;"
+    renderer="logarithmicDepthBuffer: true; colorManagement: false; sortObjects: true"
+    vr-mode-ui="enabled: false"
+    day-night-ar
+  >
+    <a-marker preset="hiro" raycaster="objects: .clickable" emitevents="true">
+      <a-box position="0 0.25 0"
+        material="color: #4cc3d9; metalness: 0.35; roughness: 0.45"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear"></a-box>
+      <a-text value="Night AR" align="center" position="0 0.85 0" width="2" color="#ffcc88"></a-text>
+    </a-marker>
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    (function () {
+      var overlay = document.getElementById('__boot-overlay');
+      function hideOk() {
+        if (overlay) overlay.classList.add('hide');
+      }
+      function showFail(msg) {
+        if (!overlay) return;
+        overlay.classList.add('err');
+        overlay.innerHTML =
+          '<strong>スクリプトの読み込みに失敗しています</strong>' +
+          '<p style="margin:12px 0 0;font-size:13px;max-width:320px;text-align:left">' +
+          (msg || 'A-Frame が初期化されていません。ブラウザの拡張（広告ブロック）をオフにするか、別ブラウザで開いてください。') +
+          '</p><p style="margin:10px 0 0;font-size:12px;opacity:.85">F12 →「コンソール」に赤いエラーが出ていないか確認してください。</p>';
+      }
+      function check() {
+        if (typeof AFRAME !== 'undefined') {
+          hideOk();
+          return true;
+        }
+        return false;
+      }
+      window.addEventListener('load', function () {
+        if (check()) return;
+        setTimeout(function () {
+          if (!check()) showFail('CDN から aframe または ar.js を取得できていない可能性があります。');
+        }, 5000);
+      });
+      if (check()) hideOk();
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var started = false;
+      var aiEnabled = true;
+      var effectEnabled = true;
+
+      function showError(msg) {
+        document.getElementById('loading-spinner').style.display = 'none';
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('error-text').textContent = msg;
+        document.getElementById('error-msg').style.display = 'block';
+      }
+
+      function tryPlayVideos() {
+        var videos = document.getElementsByTagName('video');
+        for (var i = 0; i < videos.length; i++) {
+          videos[i].play().catch(function () {});
+        }
+      }
+
+      function bindControls() {
+        var ids = ['intensity-slider', 'bloom-slider', 'grain-slider', 'sky-slider'];
+        for (var i = 0; i < ids.length; i++) {
+          document.getElementById(ids[i]).addEventListener('input', window.__dayNightUpdateDisplays);
+        }
+        document.getElementById('btn-ai').addEventListener('click', function () {
+          aiEnabled = !aiEnabled;
+          document.getElementById('btn-ai').textContent = aiEnabled ? '🤖 AI: ON' : '🤖 AI: OFF';
+          document.getElementById('seg-status').textContent = aiEnabled ? 'ON' : 'OFF';
+          if (window.__dayNightSetAi) window.__dayNightSetAi(aiEnabled);
+        });
+        document.getElementById('btn-reset').addEventListener('click', function () {
+          document.getElementById('intensity-slider').value = 75;
+          document.getElementById('bloom-slider').value = 60;
+          document.getElementById('grain-slider').value = 40;
+          document.getElementById('sky-slider').value = 80;
+          window.__dayNightUpdateDisplays();
+        });
+        document.getElementById('btn-effect').addEventListener('click', function () {
+          effectEnabled = !effectEnabled;
+          document.getElementById('btn-effect').textContent = effectEnabled ? 'エフェクト' : '停止中';
+          document.getElementById('effect-status').textContent = effectEnabled ? 'ON' : 'OFF';
+          if (window.__dayNightSetEffect) window.__dayNightSetEffect(effectEnabled);
+        });
+      }
+
+      window.__dayNightUpdateDisplays = function () {
+        var pairs = [
+          ['intensity-slider', 'intensity-display'],
+          ['bloom-slider', 'bloom-display'],
+          ['grain-slider', 'grain-display'],
+          ['sky-slider', 'sky-display']
+        ];
+        for (var i = 0; i < pairs.length; i++) {
+          var v = document.getElementById(pairs[i][0]).value;
+          document.getElementById(pairs[i][1]).textContent = v + '%';
+        }
+      };
+
+      async function startAR() {
+        if (started) return;
+        started = true;
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('loading-spinner').style.display = 'block';
+
+        bindControls();
+        window.__dayNightUpdateDisplays();
+
+        var sceneEl = document.getElementById('ar-scene');
+        sceneEl.style.display = 'block';
+
+        var loadDone = false;
+        function afterLoaded() {
+          if (loadDone) return;
+          loadDone = true;
+          tryPlayVideos();
+          var n = 0;
+          var id = setInterval(function () {
+            tryPlayVideos();
+            if (++n >= 50) clearInterval(id);
+          }, 120);
+          document.getElementById('loading-spinner').style.display = 'none';
+          document.getElementById('status-info').style.display = 'block';
+          document.getElementById('control-panel').style.display = 'block';
+          document.getElementById('hud-mini').style.display = 'block';
+          document.getElementById('effect-status').textContent = 'ON';
+          document.getElementById('seg-status').textContent = aiEnabled ? '準備中' : 'OFF';
+        }
+
+        sceneEl.addEventListener('loaded', afterLoaded, { once: true });
+        if (sceneEl.hasLoaded) afterLoaded();
+      }
+
+      document.getElementById('start-btn').addEventListener('click', startAR);
+
+      var scene = document.getElementById('ar-scene');
+      scene.addEventListener('error', function (evt) {
+        console.error(evt.detail);
+        showError('カメラにアクセスできませんでした。HTTPS または localhost で開き、許可を確認してください。');
+      });
+    })();
+  </script>
+
+  <script>
+    /* global AFRAME, THREE, SelfieSegmentation */
+    (function () {
+      'use strict';
+
+      var INFER = 256;
+      var fpsCount = 0;
+      var fpsLast = performance.now();
+      var fpsVal = 0;
+
+      function $(id) { return document.getElementById(id); }
+
+      function findArVideo() {
+        var v = document.querySelector('a-scene video');
+        if (v) return v;
+        var list = document.getElementsByTagName('video');
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].srcObject || list[i].getAttribute('src')) return list[i];
+        }
+        return list[0] || null;
+      }
+
+      function readUniformsFromUI(mat) {
+        if (!mat || !mat.uniforms) return;
+        mat.uniforms.uIntensity.value = $('intensity-slider').value / 100;
+        mat.uniforms.uBloom.value = $('bloom-slider').value / 100;
+        mat.uniforms.uGrain.value = $('grain-slider').value / 100;
+        mat.uniforms.uSky.value = $('sky-slider').value / 100;
+      }
+
+      window.__dayNightSetAi = function (on) {
+        if (window.__dayNightMat && window.__dayNightMat.uniforms) {
+          window.__dayNightMat.uniforms.uAi.value = on ? 1 : 0;
+        }
+      };
+      window.__dayNightSetEffect = function (on) {
+        window.__dayNightEffectOn = on;
+      };
+
+      var vert = [
+        'varying vec2 vUv;',
+        'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
+      ].join('\n');
+
+      var frag = [
+        'precision highp float;',
+        'uniform sampler2D uVideo;',
+        'uniform sampler2D uMask;',
+        'uniform vec2 uResolution;',
+        'uniform float uTime;',
+        'uniform float uIntensity;',
+        'uniform float uBloom;',
+        'uniform float uGrain;',
+        'uniform float uSky;',
+        'uniform float uAi;',
+        'varying vec2 vUv;',
+
+        'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }',
+        'float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }',
+        'float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }',
+
+        'vec3 acesFilmic(vec3 x) {',
+        '  float a = 2.51; float b = 0.03; float c = 2.43; float d = 0.59; float e = 0.14;',
+        '  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);',
+        '}',
+
+        'float skyWeight(vec2 uv, float person) {',
+        '  float notPerson = clamp(1.0 - person, 0.0, 1.0);',
+        '  float topBias = smoothstep(0.12, 0.62, 1.0 - uv.y);',
+        '  return clamp(notPerson * topBias * 1.45, 0.0, 1.0);',
+        '}',
+
+        'vec3 proceduralNightSky(vec2 uv) {',
+        '  vec3 zenith = vec3(0.015, 0.035, 0.14);',
+        '  vec3 horizon = vec3(0.0, 0.012, 0.06);',
+        '  float t = smoothstep(0.0, 1.0, uv.y);',
+        '  vec3 grad = mix(zenith, horizon, t);',
+        '  vec2 st = uv * vec2(520.0, 720.0);',
+        '  vec2 id = floor(st);',
+        '  vec2 gv = fract(st) - 0.5;',
+        '  float acc = 0.0;',
+        '  for (float yy = -1.0; yy <= 1.0; yy += 1.0) {',
+        '    for (float xx = -1.0; xx <= 1.0; xx += 1.0) {',
+        '      vec2 nid = id + vec2(xx, yy);',
+        '      float h = hash(nid);',
+        '      float rare = step(0.987, h);',
+        '      vec2 offs = (vec2(hash(nid + 2.1), hash(nid + 9.7)) - 0.5) * 0.55;',
+        '      float twinkle = 0.55 + 0.45 * sin(uTime * (1.4 + h * 2.0) + h * 37.0);',
+        '      float d = length(gv - offs);',
+        '      acc += rare * twinkle * smoothstep(0.22, 0.0, d);',
+        '    }',
+        '  }',
+        '  return grad + vec3(acc * 1.35);',
+        '}',
+
+        'float gatherBloom(sampler2D tex, vec2 uv, vec2 px, float bloomAmt) {',
+        '  if (bloomAmt < 0.001) return 0.0;',
+        '  float s = 0.0;',
+        '  vec2 o[8];',
+        '  o[0]=vec2(1.,0.); o[1]=vec2(-1.,0.); o[2]=vec2(0.,1.); o[3]=vec2(0.,-1.);',
+        '  o[4]=vec2(.85,.85); o[5]=vec2(-.85,.85); o[6]=vec2(.85,-.85); o[7]=vec2(-.85,-.85);',
+        '  for (int i = 0; i < 8; i++) {',
+        '    vec3 cRaw = texture2D(tex, uv + o[i] * px * 5.0).rgb;',
+        '    float lu = luma(cRaw);',
+        '    s += smoothstep(0.68, 0.98, lu);',
+        '  }',
+        '  return (s / 8.0) * bloomAmt;',
+        '}',
+
+        'void main() {',
+        '  vec2 uv = vUv;',
+        '  vec2 muv = vec2(uv.x, 1.0 - uv.y);',
+        '  float personRaw = texture2D(uMask, muv).r;',
+        '  float person = personRaw * uAi;',
+        '  float skyBlend = skyWeight(uv, person) * uSky;',
+        '  vec3 raw = texture2D(uVideo, uv).rgb;',
+        '  float luRaw = luma(raw);',
+        '  vec3 nightSkyCol = proceduralNightSky(uv);',
+        '  vec3 dfnTint = vec3(0.34, 0.56, 0.88);',
+        '  vec3 sceneBase = mix(raw * dfnTint, nightSkyCol, smoothstep(0.22, 0.82, skyBlend));',
+        '  float lightW = smoothstep(0.7, 0.82, luRaw) * (1.0 - skyBlend * 0.92);',
+        '  vec3 orange = vec3(1.0, 170.0/255.0, 51.0/255.0);',
+        '  vec3 withLights = mix(sceneBase, orange, lightW * 0.92);',
+        '  vec2 px = 1.0 / uResolution;',
+        '  float bloomAmt = gatherBloom(uVideo, uv, px, uBloom);',
+        '  bloomAmt *= (1.0 - skyBlend * 0.95);',
+        '  vec3 bloomed = withLights + bloomAmt * orange * 0.55;',
+        '  float grain = (hash3(vec3(uv * uResolution, uTime * 60.0)) - 0.5) * 0.055;',
+        '  vec3 g = vec3(grain * uGrain);',
+        '  vec3 graded = (bloomed - 0.5) * 1.14 + 0.5 + g;',
+        '  graded = acesFilmic(max(graded, vec3(0.0)));',
+        '  vec3 outCol = mix(raw, graded, uIntensity);',
+        '  gl_FragColor = vec4(outCol, 1.0);',
+        '}'
+      ].join('\n');
+
+      AFRAME.registerComponent('day-night-ar', {
+        init: function () {
+          this._tickN = 0;
+          this.maskCanvas = document.createElement('canvas');
+          this.maskCanvas.width = INFER;
+          this.maskCanvas.height = INFER;
+          this.maskCtx = this.maskCanvas.getContext('2d', { willReadFrequently: true });
+          this.inferCanvas = document.createElement('canvas');
+          this.inferCanvas.width = INFER;
+          this.inferCanvas.height = INFER;
+          this.inferCtx = this.inferCanvas.getContext('2d', { willReadFrequently: true });
+          this.mesh = null;
+          this.videoEl = null;
+          this.selfieSeg = null;
+          window.__dayNightEffectOn = true;
+        },
+
+        startMediaPipe: function (video) {
+          var self = this;
+          if (typeof SelfieSegmentation === 'undefined') {
+            $('status-line').textContent = 'MediaPipe 未読込';
+            return;
+          }
+          var selfie = new SelfieSegmentation({
+            locateFile: function (file) {
+              return 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/' + file;
+            }
+          });
+          selfie.setOptions({ modelSelection: 0 });
+          selfie.onResults(function (results) {
+            var sm = results.segmentationMask;
+            if (!sm) return;
+            var w = self.maskCanvas.width;
+            var h = self.maskCanvas.height;
+            try {
+              if (sm.canvas) self.maskCtx.drawImage(sm.canvas, 0, 0, w, h);
+              else self.maskCtx.drawImage(sm, 0, 0, w, h);
+            } catch (e) {}
+            if (self.maskTex) self.maskTex.needsUpdate = true;
+          });
+          var boot = typeof selfie.initialize === 'function' ? selfie.initialize() : Promise.resolve();
+          boot.then(function () {
+            self.selfieSeg = selfie;
+            $('seg-status').textContent = 'ON';
+            $('status-line').textContent = 'MediaPipe 準備完了 · 推論 ' + INFER + '²';
+            self.processLoop(video);
+          }).catch(function (err) {
+            $('status-line').textContent = 'MediaPipe エラー';
+            console.error(err);
+          });
+        },
+
+        processLoop: function (video) {
+          var self = this;
+          var sz = INFER;
+          function frame() {
+            if (!self.selfieSeg || !video || video.readyState < 2) {
+              requestAnimationFrame(frame);
+              return;
+            }
+            try {
+              self.inferCtx.drawImage(video, 0, 0, sz, sz);
+            } catch (e) {
+              requestAnimationFrame(frame);
+              return;
+            }
+            self.selfieSeg.send({ image: self.inferCanvas }).then(function () {
+              requestAnimationFrame(frame);
+            }).catch(function () {
+              requestAnimationFrame(frame);
+            });
+          }
+          requestAnimationFrame(frame);
+        },
+
+        ensureQuad: function (video) {
+          if (this.mesh) return;
+          var sceneEl = this.el.sceneEl;
+          var cameraObj = sceneEl.camera;
+          if (!cameraObj) return;
+
+          this.videoTex = new THREE.VideoTexture(video);
+          this.videoTex.minFilter = THREE.LinearFilter;
+          this.videoTex.magFilter = THREE.LinearFilter;
+          if ('colorSpace' in this.videoTex && THREE.SRGBColorSpace) {
+            this.videoTex.colorSpace = THREE.SRGBColorSpace;
+          }
+
+          this.maskTex = new THREE.CanvasTexture(this.maskCanvas);
+          this.maskTex.minFilter = THREE.LinearFilter;
+          this.maskTex.magFilter = THREE.LinearFilter;
+
+          var uniforms = {
+            uVideo: { value: this.videoTex },
+            uMask: { value: this.maskTex },
+            uResolution: { value: new THREE.Vector2(1, 1) },
+            uTime: { value: 0 },
+            uIntensity: { value: 0.75 },
+            uBloom: { value: 0.6 },
+            uGrain: { value: 0.4 },
+            uSky: { value: 0.8 },
+            uAi: { value: 1 }
+          };
+
+          var mat = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vert,
+            fragmentShader: frag,
+            depthTest: false,
+            depthWrite: false,
+            toneMapped: false
+          });
+
+          window.__dayNightMat = mat;
+          readUniformsFromUI(mat);
+
+          var geo = new THREE.PlaneGeometry(1, 1);
+          this.mesh = new THREE.Mesh(geo, mat);
+          this.mesh.frustumCulled = false;
+          this.mesh.renderOrder = -999;
+          cameraObj.el.object3D.add(this.mesh);
+          $('status-line').textContent = 'ポスト処理 ON（ACES・単一パス）';
+        },
+
+        resizeQuad: function () {
+          if (!this.mesh) return;
+          var sceneEl = this.el.sceneEl;
+          var renderer = sceneEl.renderer;
+          var cam = sceneEl.camera;
+          if (!renderer || !cam) return;
+          var w = renderer.domElement.width || window.innerWidth;
+          var h = renderer.domElement.height || window.innerHeight;
+          var aspect = w / Math.max(h, 1);
+          var vFov = (cam.fov * Math.PI) / 180;
+          var dist = 0.99;
+          var planeH = 2 * Math.tan(vFov / 2) * dist;
+          var planeW = planeH * aspect;
+          this.mesh.scale.set(planeW, planeH, 1);
+          this.mesh.position.set(0, 0, -dist);
+          var mat = this.mesh.material;
+          if (mat.uniforms.uResolution) mat.uniforms.uResolution.value.set(w, h);
+        },
+
+        tick: function (t) {
+          if (!window.__dayNightEffectOn && this.mesh) {
+            this.mesh.visible = false;
+            return;
+          }
+          if (this.mesh) this.mesh.visible = true;
+
+          if (!this.videoEl) {
+            this.videoEl = findArVideo();
+            if (this.videoEl) this.startMediaPipe(this.videoEl);
+          }
+          if (this.videoEl && !this.mesh) this.ensureQuad(this.videoEl);
+          if (this.mesh && this.mesh.material) {
+            var mat = this.mesh.material;
+            readUniformsFromUI(mat);
+            mat.uniforms.uTime.value = t * 0.001;
+            if (this.videoTex) this.videoTex.needsUpdate = true;
+          }
+
+          fpsCount++;
+          var now = performance.now();
+          if (now - fpsLast >= 1000) {
+            fpsVal = fpsCount;
+            fpsCount = 0;
+            fpsLast = now;
+            var el = $('fps-counter');
+            if (el) el.textContent = String(fpsVal);
+          }
+          this._tickN++;
+          if (this._tickN % 60 === 0) this.resizeQuad();
+        },
+
+        remove: function () {
+          if (this.mesh && this.mesh.parent) this.mesh.parent.remove(this.mesh);
+          if (this.videoTex) this.videoTex.dispose();
+          if (this.maskTex) this.maskTex.dispose();
+          if (this.mesh && this.mesh.geometry) this.mesh.geometry.dispose();
+          if (this.mesh && this.mesh.material) this.mesh.material.dispose();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
